@@ -140,3 +140,6 @@ Stock_app/
 ## License
 
 MIT License
+
+## Live Hosted
+https://stock-management-m3ya.onrender.com/
