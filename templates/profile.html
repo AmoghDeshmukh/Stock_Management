@@ -11,8 +11,8 @@
     <style>
         :root {
             --primary-color: #0d6efd;
-            --gradient-start: #667eea;
-            --gradient-end: #764ba2;
+            --gradient-start: #0d6efd;
+            --gradient-end: #0a58ca;
         }
         
         body {
@@ -21,7 +21,7 @@
         }
         
         .navbar {
-            background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%) !important;
+            background-color: #0d6efd !important;
         }
         
         .profile-container {
@@ -38,7 +38,7 @@
         .profile-avatar {
             width: 120px;
             height: 120px;
-            background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
+            background: #0d6efd;
             border-radius: 50%;
             display: flex;
             align-items: center;
@@ -46,7 +46,7 @@
             margin: 0 auto 20px;
             font-size: 3rem;
             color: white;
-            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+            box-shadow: 0 10px 30px rgba(13, 110, 253, 0.3);
         }
         
         .profile-card {
@@ -58,7 +58,7 @@
         }
         
         .profile-card-header {
-            background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
+            background: #0d6efd;
             color: white;
             padding: 20px 25px;
         }
@@ -84,7 +84,7 @@
         
         .form-floating .form-control:focus {
             border-color: var(--primary-color);
-            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
         }
         
         .form-floating label {
@@ -101,7 +101,7 @@
         }
         
         .btn-save {
-            background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
+            background: #0d6efd;
             border: none;
             border-radius: 10px;
             padding: 12px 30px;
@@ -111,7 +111,7 @@
         
         .btn-save:hover {
             transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 5px 20px rgba(13, 110, 253, 0.4);
         }
         
         .info-item {
@@ -134,7 +134,7 @@
             align-items: center;
             justify-content: center;
             margin-right: 15px;
-            color: var(--gradient-start);
+            color: #0d6efd;
             font-size: 1.2rem;
         }
         
@@ -200,17 +200,34 @@
                 <span class="fw-bold">Material Stock Manager</span>
             </a>
             <div class="d-flex align-items-center">
-                {% if session.get('role') == 'admin' %}
-                <a href="{{ url_for('admin_users') }}" class="back-link me-3">
-                    <i class="bi bi-people me-1"></i> Manage Users
-                </a>
-                {% endif %}
                 <a href="{{ url_for('index') }}" class="back-link me-3">
                     <i class="bi bi-arrow-left me-1"></i> Back to Dashboard
                 </a>
-                <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm">
-                    <i class="bi bi-box-arrow-right me-1"></i> Logout
-                </a>
+                <div class="dropdown">
+                    <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-person-circle me-1"></i> {{ session.get('username', 'User') }}
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                        {% if session.get('role') == 'admin' %}
+                        <li>
+                            <a class="dropdown-item" href="{{ url_for('admin_users') }}">
+                                <i class="bi bi-people me-2"></i> Manage Users
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{{ url_for('admin_backup') }}">
+                                <i class="bi bi-shield-check me-2"></i> Backup & Restore
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        {% endif %}
+                        <li>
+                            <a class="dropdown-item" href="{{ url_for('logout') }}">
+                                <i class="bi bi-box-arrow-right me-2"></i> Logout
+                            </a>
+                        </li>
+                    </ul>
+                </div>
             </div>
         </div>
     </nav>

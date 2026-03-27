@@ -119,32 +119,41 @@ class Material(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     date = db.Column(db.Date, nullable=False, default=datetime.utcnow)
     item_name = db.Column(db.String(200), nullable=False)
+    category = db.Column(db.String(50), nullable=True, default='Category A')  # Category A, B, C, D
     party_name = db.Column(db.String(200), nullable=True, default='')
     inward = db.Column(db.Integer, nullable=False, default=0)
     outward = db.Column(db.Integer, nullable=False, default=0)
     balance = db.Column(db.Integer, nullable=False, default=0)
     storage_place = db.Column(db.String(200), nullable=True, default='')
+    description = db.Column(db.Text, nullable=True, default='')  # Optional description field
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = db.Column(db.DateTime, nullable=True)  # Soft delete timestamp
+    deleted_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)  # Who deleted
     
     # Relationship to User
-    user = db.relationship('User', backref=db.backref('materials', lazy=True))
+    user = db.relationship('User', foreign_keys=[user_id], backref=db.backref('materials', lazy=True))
+    deleter = db.relationship('User', foreign_keys=[deleted_by])
 
     def to_dict(self):
         return {
             'id': self.id,
             'date': self.date.strftime('%Y-%m-%d'),
             'item_name': self.item_name,
+            'category': self.category or 'Category A',
             'party_name': self.party_name or '',
             'inward': self.inward,
             'outward': self.outward,
             'balance': self.balance,
             'storage_place': self.storage_place or '',
+            'description': self.description or '',
             'user_id': self.user_id,
             'created_by': self.user.username if self.user else 'Unknown',
             'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-            'updated_at': self.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+            'updated_at': self.updated_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'deleted_at': self.deleted_at.strftime('%Y-%m-%d %H:%M:%S') if self.deleted_at else None,
+            'deleted_by': self.deleter.username if self.deleter else None
         }
 
 # MaterialHistory Model - Track individual actions/transactions
@@ -159,6 +168,7 @@ class MaterialHistory(db.Model):
     action_outward = db.Column(db.Integer, nullable=False, default=0)  # Outward for this action
     running_balance = db.Column(db.Integer, nullable=False, default=0)  # Balance after this action
     storage_place = db.Column(db.String(200), nullable=True)
+    description = db.Column(db.Text, nullable=True, default='')  # Description for this action
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     
@@ -177,6 +187,7 @@ class MaterialHistory(db.Model):
             'action_outward': self.action_outward,
             'running_balance': self.running_balance,
             'storage_place': self.storage_place or '',
+            'description': self.description or '',
             'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S'),
             'created_by': self.user.username if self.user else 'Unknown'
         }
@@ -184,6 +195,45 @@ class MaterialHistory(db.Model):
 # Create database tables
 with app.app_context():
     db.create_all()
+    
+    # Migration: Add description column if it doesn't exist
+    from sqlalchemy import inspect, text
+    inspector = inspect(db.engine)
+    columns = [col['name'] for col in inspector.get_columns('material')]
+    if 'description' not in columns:
+        with db.engine.connect() as conn:
+            conn.execute(text('ALTER TABLE material ADD COLUMN description TEXT DEFAULT ""'))
+            conn.commit()
+        print("Migration: Added 'description' column to material table")
+    
+    # Migration: Add description column to material_history if it doesn't exist
+    history_columns = [col['name'] for col in inspector.get_columns('material_history')]
+    if 'description' not in history_columns:
+        with db.engine.connect() as conn:
+            conn.execute(text('ALTER TABLE material_history ADD COLUMN description TEXT DEFAULT ""'))
+            conn.commit()
+        print("Migration: Added 'description' column to material_history table")
+    
+    # Migration: Add category column to material if it doesn't exist
+    if 'category' not in columns:
+        with db.engine.connect() as conn:
+            conn.execute(text('ALTER TABLE material ADD COLUMN category VARCHAR(50) DEFAULT "Category A"'))
+            conn.commit()
+        print("Migration: Added 'category' column to material table")
+    
+    # Migration: Add deleted_at column to material if it doesn't exist (soft delete)
+    if 'deleted_at' not in columns:
+        with db.engine.connect() as conn:
+            conn.execute(text('ALTER TABLE material ADD COLUMN deleted_at DATETIME'))
+            conn.commit()
+        print("Migration: Added 'deleted_at' column to material table")
+    
+    # Migration: Add deleted_by column to material if it doesn't exist
+    if 'deleted_by' not in columns:
+        with db.engine.connect() as conn:
+            conn.execute(text('ALTER TABLE material ADD COLUMN deleted_by INTEGER'))
+            conn.commit()
+        print("Migration: Added 'deleted_by' column to material table")
 
 # Login required decorator
 def login_required(f):
@@ -628,21 +678,270 @@ def admin_toggle_user_status(user_id):
     flash(f'User {user.username} has been {status}', 'success')
     return redirect(url_for('admin_users'))
 
+# Admin Backup & Restore Routes
+@app.route('/admin/backup')
+@admin_required
+def admin_backup():
+    """Admin backup page - view deleted items and download database"""
+    # Get deleted materials
+    deleted_materials = Material.query.filter(Material.deleted_at != None).order_by(Material.deleted_at.desc()).all()
+    
+    # Get deleted users
+    deleted_users = User.query.filter(User.deleted_at != None).order_by(User.deleted_at.desc()).all()
+    
+    # Get stats
+    stats = {
+        'total_users': User.query.filter(User.deleted_at == None).count(),
+        'total_materials': Material.query.filter(Material.deleted_at == None).count(),
+        'deleted_users': len(deleted_users),
+        'deleted_materials': len(deleted_materials),
+        'total_history': MaterialHistory.query.count()
+    }
+    
+    return render_template('admin_backup.html', 
+                          deleted_materials=deleted_materials, 
+                          deleted_users=deleted_users,
+                          stats=stats)
+
+@app.route('/admin/materials/<int:material_id>/restore', methods=['POST'])
+@admin_required
+def admin_restore_material(material_id):
+    """Restore a soft-deleted material (Admin only)"""
+    material = Material.query.get_or_404(material_id)
+    
+    if material.deleted_at is None:
+        flash('Material is not deleted', 'error')
+        return redirect(url_for('admin_backup'))
+    
+    try:
+        item_name = material.item_name
+        material.deleted_at = None
+        material.deleted_by = None
+        db.session.commit()
+        flash(f'Material "{item_name}" has been restored successfully!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error restoring material: {str(e)}', 'error')
+    
+    return redirect(url_for('admin_backup'))
+
+@app.route('/admin/materials/<int:material_id>/permanent-delete', methods=['POST'])
+@admin_required
+def admin_permanent_delete_material(material_id):
+    """Permanently delete a material and its history (Admin only)"""
+    material = Material.query.get_or_404(material_id)
+    
+    try:
+        item_name = material.item_name
+        # Delete associated history records first
+        MaterialHistory.query.filter_by(material_id=material_id).delete()
+        db.session.delete(material)
+        db.session.commit()
+        flash(f'Material "{item_name}" has been permanently deleted', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error deleting material: {str(e)}', 'error')
+    
+    return redirect(url_for('admin_backup'))
+
+@app.route('/admin/download-backup')
+@admin_required
+def download_backup():
+    """Download SQLite database backup"""
+    import shutil
+    from flask import send_file
+    
+    # Create backup filename with timestamp
+    backup_filename = f'material_stock_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.db'
+    
+    # Get the database path
+    db_path = os.path.join(app.instance_path, 'material_stock.db')
+    
+    if os.path.exists(db_path):
+        return send_file(
+            db_path,
+            as_attachment=True,
+            download_name=backup_filename,
+            mimetype='application/x-sqlite3'
+        )
+    else:
+        flash('Database file not found', 'error')
+        return redirect(url_for('admin_backup'))
+
+@app.route('/admin/export-json')
+@admin_required
+def export_json():
+    """Export all data as JSON backup"""
+    import json
+    from flask import Response
+    
+    # Get all data
+    users = User.query.all()
+    materials = Material.query.all()
+    history = MaterialHistory.query.all()
+    
+    backup_data = {
+        'exported_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'users': [{
+            'id': u.id,
+            'username': u.username,
+            'email': u.email,
+            'phone': u.phone,
+            'role': u.role,
+            'is_active': u.is_active,
+            'deleted_at': u.deleted_at.strftime('%Y-%m-%d %H:%M:%S') if u.deleted_at else None
+        } for u in users],
+        'materials': [m.to_dict() for m in materials],
+        'history': [h.to_dict() for h in history]
+    }
+    
+    json_data = json.dumps(backup_data, indent=2)
+    filename = f'material_stock_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+    
+    return Response(
+        json_data,
+        mimetype='application/json',
+        headers={'Content-Disposition': f'attachment;filename={filename}'}
+    )
+
+@app.route('/admin/import-json', methods=['POST'])
+@admin_required
+def import_json_preview():
+    """Upload JSON backup and preview contents for selective import"""
+    import json
+    
+    if 'backup_file' not in request.files:
+        flash('No file uploaded', 'error')
+        return redirect(url_for('admin_backup'))
+    
+    file = request.files['backup_file']
+    if file.filename == '':
+        flash('No file selected', 'error')
+        return redirect(url_for('admin_backup'))
+    
+    if not file.filename.endswith('.json'):
+        flash('Please upload a JSON file', 'error')
+        return redirect(url_for('admin_backup'))
+    
+    try:
+        content = file.read().decode('utf-8')
+        backup_data = json.loads(content)
+        
+        # Store in session for the import step
+        session['import_data'] = backup_data
+        
+        # Get current ACTIVE items for comparison (exclude deleted)
+        existing_material_names = [m.item_name.lower() for m in Material.query.filter(Material.deleted_at == None).all()]
+        existing_usernames = [u.username.lower() for u in User.query.filter(User.deleted_at == None).all()]
+        
+        # Mark which items already exist (only active ones)
+        for m in backup_data.get('materials', []):
+            m['exists'] = m['item_name'].lower() in existing_material_names
+        
+        for u in backup_data.get('users', []):
+            u['exists'] = u['username'].lower() in existing_usernames
+        
+        return render_template('admin_import_preview.html', 
+                              backup_data=backup_data,
+                              existing_materials=len(existing_material_names),
+                              existing_users=len(existing_usernames))
+    
+    except json.JSONDecodeError:
+        flash('Invalid JSON file', 'error')
+        return redirect(url_for('admin_backup'))
+    except Exception as e:
+        flash(f'Error reading file: {str(e)}', 'error')
+        return redirect(url_for('admin_backup'))
+
+@app.route('/admin/import-materials', methods=['POST'])
+@admin_required
+def import_materials():
+    """Import selected materials from uploaded JSON backup"""
+    import json
+    
+    backup_data = session.get('import_data')
+    if not backup_data:
+        flash('No import data found. Please upload a file first.', 'error')
+        return redirect(url_for('admin_backup'))
+    
+    selected_ids = request.form.getlist('material_ids')
+    if not selected_ids:
+        flash('No materials selected for import', 'warning')
+        return redirect(url_for('admin_backup'))
+    
+    selected_ids = [int(id) for id in selected_ids]
+    imported_count = 0
+    skipped_count = 0
+    
+    try:
+        for material_data in backup_data.get('materials', []):
+            if material_data['id'] in selected_ids:
+                # Check if item name already exists
+                existing = Material.query.filter(
+                    db.func.lower(Material.item_name) == material_data['item_name'].lower(),
+                    Material.deleted_at == None
+                ).first()
+                
+                if existing:
+                    skipped_count += 1
+                    continue
+                
+                # Create new material
+                new_material = Material(
+                    date=datetime.strptime(material_data['date'], '%Y-%m-%d').date(),
+                    item_name=material_data['item_name'],
+                    category=material_data.get('category', 'Split AC'),
+                    party_name=material_data.get('party_name', ''),
+                    inward=material_data.get('inward', 0),
+                    outward=material_data.get('outward', 0),
+                    balance=material_data.get('balance', 0),
+                    storage_place=material_data.get('storage_place', ''),
+                    description=material_data.get('description', ''),
+                    user_id=session['user_id']  # Assign to current admin
+                )
+                db.session.add(new_material)
+                imported_count += 1
+        
+        db.session.commit()
+        
+        # Clear session data
+        session.pop('import_data', None)
+        
+        if imported_count > 0:
+            flash(f'Successfully imported {imported_count} materials!', 'success')
+        if skipped_count > 0:
+            flash(f'Skipped {skipped_count} materials (already exist)', 'warning')
+            
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error importing materials: {str(e)}', 'error')
+    
+    return redirect(url_for('admin_backup'))
+
 # Routes
 @app.route('/')
 @login_required
 def index():
     return render_template('index.html')
 
+@app.route('/material-list')
+@login_required
+def material_list():
+    """Material list page with simplified view (date, item name, total)"""
+    return render_template('material_list.html')
+
 # API Routes
 @app.route('/api/materials', methods=['GET'])
 @login_required
 def get_materials():
-    """Get materials - Admin sees all, others see only their own"""
+    """Get materials - Admin sees all, others see only their own (excluding deleted)"""
     if session.get('role') == 'admin':
-        materials = Material.query.order_by(Material.date.desc()).all()
+        materials = Material.query.filter(Material.deleted_at == None).order_by(Material.date.desc()).all()
     else:
-        materials = Material.query.filter_by(user_id=session['user_id']).order_by(Material.date.desc()).all()
+        materials = Material.query.filter(
+            Material.user_id == session['user_id'],
+            Material.deleted_at == None
+        ).order_by(Material.date.desc()).all()
     return jsonify([material.to_dict() for material in materials])
 
 @app.route('/api/materials/<int:id>', methods=['GET'])
@@ -661,6 +960,19 @@ def add_material():
     data = request.get_json()
     
     try:
+        # Check for duplicate item name
+        item_name = data['item_name'].strip()
+        existing = Material.query.filter(
+            Material.user_id == session['user_id'],
+            db.func.lower(Material.item_name) == item_name.lower()
+        ).first()
+        
+        if existing:
+            return jsonify({
+                'success': False,
+                'message': f'Material with name "{item_name}" already exists. Please use a unique name.'
+            }), 400
+        
         date = datetime.strptime(data['date'], '%Y-%m-%d').date()
         inward = int(data.get('inward', 0))
         outward = int(data.get('outward', 0))
@@ -668,12 +980,14 @@ def add_material():
         
         new_material = Material(
             date=date,
-            item_name=data['item_name'],
+            item_name=item_name,
+            category=data.get('category', 'Category A'),
             party_name=data.get('party_name', ''),
             inward=inward,
             outward=outward,
             balance=balance,
             storage_place=data.get('storage_place', ''),
+            description=data.get('description', ''),
             user_id=session['user_id']
         )
         
@@ -691,6 +1005,7 @@ def add_material():
             action_outward=outward,
             running_balance=balance,
             storage_place=data.get('storage_place', ''),
+            description=data.get('description', ''),
             created_by=session['user_id']
         )
         db.session.add(first_action)
@@ -723,12 +1038,26 @@ def update_material(id):
     data = request.get_json()
     
     try:
+        # Check for duplicate item name (excluding current material)
+        new_item_name = data.get('item_name', '').strip()
+        if new_item_name:
+            existing = Material.query.filter(
+                Material.user_id == session['user_id'],
+                Material.id != id,
+                db.func.lower(Material.item_name) == new_item_name.lower()
+            ).first()
+            
+            if existing:
+                return jsonify({
+                    'success': False,
+                    'message': f'Material with name "{new_item_name}" already exists. Please use a unique name.'
+                }), 400
+        
         # Get the action values (what to ADD)
         action_inward = int(data.get('action_inward', 0))
         action_outward = int(data.get('action_outward', 0))
         new_party_name = data.get('party_name', '')
         new_storage_place = data.get('storage_place', '')
-        new_item_name = data.get('item_name', '')
         new_date = datetime.strptime(data['date'], '%Y-%m-%d').date()
         
         # Calculate new cumulative totals
@@ -736,33 +1065,39 @@ def update_material(id):
         new_total_outward = material.outward + action_outward
         new_balance = new_total_inward - new_total_outward
         
-        # Get the next action number
-        last_action = MaterialHistory.query.filter_by(material_id=material.id).order_by(MaterialHistory.action_number.desc()).first()
-        next_action_number = (last_action.action_number + 1) if last_action else 2  # First action is the initial creation
-        
-        # Record this action in history
-        history = MaterialHistory(
-            material_id=material.id,
-            action_number=next_action_number,
-            date=new_date,
-            item_name=new_item_name,
-            party_name=new_party_name,
-            action_inward=action_inward,
-            action_outward=action_outward,
-            running_balance=new_balance,
-            storage_place=new_storage_place,
-            created_by=session['user_id']
-        )
-        db.session.add(history)
+        # Only record history if there's an actual quantity change (inward or outward)
+        if action_inward > 0 or action_outward > 0:
+            # Get the next action number
+            last_action = MaterialHistory.query.filter_by(material_id=material.id).order_by(MaterialHistory.action_number.desc()).first()
+            next_action_number = (last_action.action_number + 1) if last_action else 2  # First action is the initial creation
+            
+            # Record this action in history
+            history = MaterialHistory(
+                material_id=material.id,
+                action_number=next_action_number,
+                date=new_date,
+                item_name=new_item_name,
+                party_name=new_party_name,
+                action_inward=action_inward,
+                action_outward=action_outward,
+                running_balance=new_balance,
+                storage_place=new_storage_place,
+                description=data.get('description', ''),
+                created_by=session['user_id']
+            )
+            db.session.add(history)
         
         # Update material with cumulative totals
         material.date = new_date
         material.item_name = new_item_name
+        if 'category' in data:
+            material.category = data.get('category', material.category)
         material.party_name = new_party_name
         material.inward = new_total_inward
         material.outward = new_total_outward
         material.balance = new_balance
         material.storage_place = new_storage_place
+        material.description = data.get('description', material.description or '')
         
         db.session.commit()
         
@@ -792,10 +1127,66 @@ def get_material_history(id):
     history = MaterialHistory.query.filter_by(material_id=id).order_by(MaterialHistory.action_number.asc()).all()
     return jsonify([h.to_dict() for h in history])
 
+@app.route('/api/materials/<int:material_id>/history/<int:history_id>', methods=['DELETE'])
+@login_required
+def delete_history_entry(material_id, history_id):
+    """Delete a single history entry"""
+    material = Material.query.get_or_404(material_id)
+    
+    # Check ownership
+    if session.get('role') != 'admin' and material.user_id != session['user_id']:
+        return jsonify({'success': False, 'message': 'Access denied'}), 403
+    
+    try:
+        history = MaterialHistory.query.filter_by(id=history_id, material_id=material_id).first()
+        if not history:
+            return jsonify({'success': False, 'message': 'History entry not found'}), 404
+        
+        db.session.delete(history)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'History entry deleted successfully!'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Error deleting history: {str(e)}'
+        }), 400
+
+@app.route('/api/materials/<int:material_id>/history', methods=['DELETE'])
+@login_required
+def delete_all_history(material_id):
+    """Delete all history for a material"""
+    material = Material.query.get_or_404(material_id)
+    
+    # Check ownership
+    if session.get('role') != 'admin' and material.user_id != session['user_id']:
+        return jsonify({'success': False, 'message': 'Access denied'}), 403
+    
+    try:
+        count = MaterialHistory.query.filter_by(material_id=material_id).delete()
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Deleted {count} history entries successfully!'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Error deleting history: {str(e)}'
+        }), 400
+
 @app.route('/api/materials/<int:id>', methods=['DELETE'])
 @login_required
 def delete_material(id):
-    """Delete a material - only if owner or admin"""
+    """Soft delete a material - only if owner or admin"""
     material = Material.query.get_or_404(id)
     
     # Check ownership
@@ -803,15 +1194,14 @@ def delete_material(id):
         return jsonify({'success': False, 'message': 'Access denied'}), 403
     
     try:
-        # Delete associated history records first
-        MaterialHistory.query.filter_by(material_id=id).delete()
-        
-        db.session.delete(material)
+        # Soft delete - set deleted_at timestamp
+        material.deleted_at = datetime.utcnow()
+        material.deleted_by = session['user_id']
         db.session.commit()
         
         return jsonify({
             'success': True,
-            'message': 'Material deleted successfully!'
+            'message': 'Material deleted successfully! Admin can restore if needed.'
         })
         
     except Exception as e:
@@ -824,28 +1214,33 @@ def delete_material(id):
 @app.route('/api/statistics', methods=['GET'])
 @login_required
 def get_statistics():
-    """Get statistics for dashboard - filtered by user unless admin"""
+    """Get statistics for dashboard - filtered by user unless admin (excluding deleted)"""
     if session.get('role') == 'admin':
-        base_query = Material.query
+        base_query = Material.query.filter(Material.deleted_at == None)
     else:
-        base_query = Material.query.filter_by(user_id=session['user_id'])
+        base_query = Material.query.filter(Material.user_id == session['user_id'], Material.deleted_at == None)
     
     total_items = base_query.count()
     total_inward = db.session.query(db.func.sum(Material.inward)).filter(
+        Material.deleted_at == None,
         Material.user_id == session['user_id'] if session.get('role') != 'admin' else True
     ).scalar() or 0
     total_outward = db.session.query(db.func.sum(Material.outward)).filter(
+        Material.deleted_at == None,
         Material.user_id == session['user_id'] if session.get('role') != 'admin' else True
     ).scalar() or 0
     total_balance = db.session.query(db.func.sum(Material.balance)).filter(
+        Material.deleted_at == None,
         Material.user_id == session['user_id'] if session.get('role') != 'admin' else True
     ).scalar() or 0
     
     # Get unique storage places count
     if session.get('role') == 'admin':
-        storage_places = db.session.query(Material.storage_place).distinct().count()
+        storage_places = db.session.query(Material.storage_place).filter(Material.deleted_at == None).distinct().count()
     else:
-        storage_places = db.session.query(Material.storage_place).filter_by(user_id=session['user_id']).distinct().count()
+        storage_places = db.session.query(Material.storage_place).filter(
+            Material.user_id == session['user_id'], Material.deleted_at == None
+        ).distinct().count()
     
     return jsonify({
         'total_items': total_items,
@@ -858,14 +1253,14 @@ def get_statistics():
 @app.route('/api/search', methods=['GET'])
 @login_required
 def search_materials():
-    """Search materials by item name, party name, or storage place - filtered by user"""
+    """Search materials by item name, party name, or storage place - filtered by user (excluding deleted)"""
     query = request.args.get('q', '')
     
-    # Base filter for non-admin users
+    # Base filter - always exclude deleted
     if session.get('role') == 'admin':
-        base_filter = True
+        base_filter = Material.deleted_at == None
     else:
-        base_filter = Material.user_id == session['user_id']
+        base_filter = db.and_(Material.user_id == session['user_id'], Material.deleted_at == None)
     
     if query:
         materials = Material.query.filter(
@@ -876,24 +1271,33 @@ def search_materials():
         ).order_by(Material.date.desc()).all()
     else:
         if session.get('role') == 'admin':
-            materials = Material.query.order_by(Material.date.desc()).all()
+            materials = Material.query.filter(Material.deleted_at == None).order_by(Material.date.desc()).all()
         else:
-            materials = Material.query.filter_by(user_id=session['user_id']).order_by(Material.date.desc()).all()
+            materials = Material.query.filter(
+                Material.user_id == session['user_id'],
+                Material.deleted_at == None
+            ).order_by(Material.date.desc()).all()
     
     return jsonify([material.to_dict() for material in materials])
 
 @app.route('/api/suggestions', methods=['GET'])
 @login_required
 def get_suggestions():
-    """Get unique values for autocomplete suggestions - filtered by user"""
+    """Get unique values for autocomplete suggestions - filtered by user (excluding deleted)"""
     if session.get('role') == 'admin':
-        item_names = db.session.query(Material.item_name).distinct().all()
-        party_names = db.session.query(Material.party_name).distinct().all()
-        storage_places = db.session.query(Material.storage_place).distinct().all()
+        item_names = db.session.query(Material.item_name).filter(Material.deleted_at == None).distinct().all()
+        party_names = db.session.query(Material.party_name).filter(Material.deleted_at == None).distinct().all()
+        storage_places = db.session.query(Material.storage_place).filter(Material.deleted_at == None).distinct().all()
     else:
-        item_names = db.session.query(Material.item_name).filter_by(user_id=session['user_id']).distinct().all()
-        party_names = db.session.query(Material.party_name).filter_by(user_id=session['user_id']).distinct().all()
-        storage_places = db.session.query(Material.storage_place).filter_by(user_id=session['user_id']).distinct().all()
+        item_names = db.session.query(Material.item_name).filter(
+            Material.user_id == session['user_id'], Material.deleted_at == None
+        ).distinct().all()
+        party_names = db.session.query(Material.party_name).filter(
+            Material.user_id == session['user_id'], Material.deleted_at == None
+        ).distinct().all()
+        storage_places = db.session.query(Material.storage_place).filter(
+            Material.user_id == session['user_id'], Material.deleted_at == None
+        ).distinct().all()
     
     return jsonify({
         'item_names': sorted([i[0] for i in item_names if i[0]]),

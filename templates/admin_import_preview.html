@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Import Preview - Admin</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .exists-badge { background-color: #ffc107; color: #000; }
+        .new-badge { background-color: #198754; }
+        .deleted-badge { background-color: #dc3545; }
+        .import-row:hover { background-color: #f8f9fa; }
+        .select-all-container { background-color: #e7f3ff; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <i class="bi bi-box-seam"></i> Material Stock Manager
+            </a>
+            <div class="d-flex align-items-center">
+                <a href="{{ url_for('admin_backup') }}" class="btn btn-outline-light btn-sm">
+                    <i class="bi bi-arrow-left me-1"></i> Back to Backup
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Page Header -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h3><i class="bi bi-file-earmark-arrow-up me-2"></i>Import Preview</h3>
+                <p class="text-muted mb-0">Select items to import from backup file</p>
+            </div>
+            <div class="text-end">
+                <small class="text-muted">
+                    Backup exported: {{ backup_data.exported_at if backup_data.exported_at else 'Unknown' }}
+                </small>
+            </div>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="row mb-4">
+            <div class="col-md-4 mb-3">
+                <div class="card border-primary shadow-sm">
+                    <div class="card-body text-center">
+                        <h4 class="text-primary mb-0">{{ backup_data.materials|length if backup_data.materials else 0 }}</h4>
+                        <small class="text-muted">Materials in Backup</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card border-warning shadow-sm">
+                    <div class="card-body text-center">
+                        <h4 class="text-warning mb-0">{{ existing_materials }}</h4>
+                        <small class="text-muted">Existing Materials</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card border-success shadow-sm">
+                    <div class="card-body text-center">
+                        {% set new_count = backup_data.materials|selectattr('exists', 'false')|list|length if backup_data.materials else 0 %}
+                        <h4 class="text-success mb-0">{{ new_count }}</h4>
+                        <small class="text-muted">New Materials (can import)</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Import Form -->
+        <form action="{{ url_for('import_materials') }}" method="POST">
+            <!-- Materials Section -->
+            <div class="card shadow mb-4">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-box-seam me-2"></i>Materials</h5>
+                    <span class="badge bg-light text-primary">{{ backup_data.materials|length if backup_data.materials else 0 }} items</span>
+                </div>
+                
+                <!-- Select All Bar -->
+                <div class="card-body select-all-container py-2 border-bottom">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="selectAllNew" onchange="toggleAllNew(this)">
+                        <label class="form-check-label fw-bold" for="selectAllNew">
+                            Select all new items (excluding existing)
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="card-body p-0">
+                    {% if backup_data.materials %}
+                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th style="width: 50px;">Import</th>
+                                    <th>Item Name</th>
+                                    <th>Category</th>
+                                    <th>Balance</th>
+                                    <th>Created By</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for material in backup_data.materials %}
+                                <tr class="import-row {% if material.exists %}table-warning{% endif %}">
+                                    <td>
+                                        <input class="form-check-input material-checkbox" type="checkbox" 
+                                               name="material_ids" value="{{ material.id }}"
+                                               data-is-new="{{ 'false' if material.exists else 'true' }}">
+                                    </td>
+                                    <td>
+                                        <strong>{{ material.item_name }}</strong>
+                                        {% if material.description %}
+                                        <br><small class="text-muted">{{ material.description[:50] }}{% if material.description|length > 50 %}...{% endif %}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ material.category or 'N/A' }}</td>
+                                    <td>
+                                        <span class="badge bg-info">{{ material.balance }}</span>
+                                    </td>
+                                    <td>{{ material.created_by or 'Unknown' }}</td>
+                                    <td>
+                                        {% if material.exists %}
+                                            <span class="badge exists-badge"><i class="bi bi-exclamation-circle me-1"></i>Already Exists</span>
+                                        {% elif material.deleted_at %}
+                                            <span class="badge deleted-badge"><i class="bi bi-trash me-1"></i>Was Deleted</span>
+                                        {% else %}
+                                            <span class="badge new-badge"><i class="bi bi-plus-circle me-1"></i>New</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4 text-muted">
+                        <i class="bi bi-inbox fs-1"></i>
+                        <p class="mt-2">No materials found in backup file</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="d-flex justify-content-between mb-4">
+                <a href="{{ url_for('admin_backup') }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-x-circle me-1"></i> Cancel
+                </a>
+                <button type="submit" class="btn btn-success btn-lg" id="importBtn">
+                    <i class="bi bi-download me-1"></i> Import Selected (<span id="selectedCount">0</span>)
+                </button>
+            </div>
+        </form>
+
+        <!-- History Info -->
+        {% if backup_data.history %}
+        <div class="card shadow mb-4">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Transaction History</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-0">
+                    <i class="bi bi-info-circle me-1"></i>
+                    This backup contains {{ backup_data.history|length }} history records.
+                    History records are not imported - only material totals are restored.
+                </p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Update selected count
+        function updateSelectedCount() {
+            const checked = document.querySelectorAll('.material-checkbox:checked').length;
+            document.getElementById('selectedCount').textContent = checked;
+            document.getElementById('importBtn').disabled = checked === 0;
+        }
+
+        // Toggle all new items
+        function toggleAllNew(checkbox) {
+            const checkboxes = document.querySelectorAll('.material-checkbox[data-is-new="true"]');
+            checkboxes.forEach(cb => {
+                cb.checked = checkbox.checked;
+            });
+            updateSelectedCount();
+        }
+
+        // Add listeners to all checkboxes
+        document.querySelectorAll('.material-checkbox').forEach(cb => {
+            cb.addEventListener('change', updateSelectedCount);
+        });
+
+        // Initial count
+        updateSelectedCount();
+    </script>
+</body>
+</html>

@@ -29,9 +29,6 @@ document.addEventListener('DOMContentLoaded', function() {
     deleteModalInstance = new bootstrap.Modal(deleteModal);
     toastInstance = new bootstrap.Toast(document.getElementById('notification-toast'));
     
-    // Set current date
-    setCurrentDate();
-    
     // Load initial data
     loadMaterials();
     loadStatistics();
@@ -44,19 +41,28 @@ document.addEventListener('DOMContentLoaded', function() {
     // Set default date in form
     document.getElementById('material-date').valueAsDate = new Date();
     
+    // Listen for changes from other pages (index.html)
+    window.addEventListener('storage', function(e) {
+        if (e.key === 'materialDataUpdated') {
+            loadMaterials();
+            loadStatistics();
+        }
+    });
+    
+    // Reload data when page becomes visible (user returns from index.html)
+    document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) {
+            loadMaterials();
+            loadStatistics();
+        }
+    });
+    
     // Add click listeners for sortable column headers
     document.querySelectorAll('.sortable').forEach(header => {
         header.addEventListener('click', () => handleSort(header.dataset.sort));
         header.style.cursor = 'pointer';
     });
 });
-
-// Set current date in navbar
-function setCurrentDate() {
-    const dateElement = document.getElementById('current-date');
-    const options = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' };
-    dateElement.textContent = new Date().toLocaleDateString('en-US', options);
-}
 
 // Handle sorting when column header is clicked
 function handleSort(column) {
@@ -320,13 +326,11 @@ function openAddModal() {
     document.getElementById('material-inward').value = 0;
     document.getElementById('material-outward').value = 0;
     document.getElementById('material-balance').value = 0;
+    document.getElementById('material-description').value = '';
     
     // Show add mode fields, hide edit mode fields
     document.getElementById('add-mode-fields').classList.remove('d-none');
     document.getElementById('edit-mode-fields').classList.add('d-none');
-    
-    // Hide history section
-    document.getElementById('history-section').classList.add('d-none');
     
     // Update modal title
     document.getElementById('materialModalLabel').innerHTML = 
@@ -356,6 +360,7 @@ async function openEditModal(id) {
         document.getElementById('material-item-name').value = material.item_name;
         document.getElementById('material-party-name').value = material.party_name;
         document.getElementById('material-storage-place').value = material.storage_place;
+        document.getElementById('material-description').value = material.description || '';
         
         // Hide add mode fields, show edit mode fields
         document.getElementById('add-mode-fields').classList.add('d-none');
@@ -376,10 +381,6 @@ async function openEditModal(id) {
             '<i class="bi bi-pencil-square me-2"></i> Update Material: ' + escapeHtml(material.item_name);
         document.getElementById('save-btn').innerHTML = 
             '<i class="bi bi-check-circle me-1"></i> Add Action';
-        
-        // Show history section and load history
-        document.getElementById('history-section').classList.remove('d-none');
-        await loadMaterialHistory(id);
         
         materialModalInstance.show();
     } catch (error) {
@@ -412,7 +413,7 @@ async function loadMaterialHistory(id) {
         const tbody = document.getElementById('history-tbody');
         
         if (history.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No actions recorded yet</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No actions recorded yet</td></tr>';
         } else {
             tbody.innerHTML = history.map(h => `
                 <tr>
@@ -420,28 +421,88 @@ async function loadMaterialHistory(id) {
                     <td>${formatDate(h.date)}</td>
                     <td>${escapeHtml(h.item_name) || '-'}</td>
                     <td>${escapeHtml(h.party_name) || '-'}</td>
+                    <td>${escapeHtml(h.description) || '-'}</td>
                     <td class="text-center text-success">${h.action_inward > 0 ? '+' + h.action_inward : '-'}</td>
                     <td class="text-center text-danger">${h.action_outward > 0 ? '-' + h.action_outward : '-'}</td>
                     <td class="text-center fw-bold">${h.running_balance}</td>
+                    <td class="text-center">
+                        <button type="button" class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deleteHistoryEntryInline(${id}, ${h.id})" title="Delete">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
                 </tr>
             `).join('');
         }
     } catch (error) {
         console.error('Error loading history:', error);
         document.getElementById('history-tbody').innerHTML = 
-            '<tr><td colspan="7" class="text-center text-danger">Error loading history</td></tr>';
+            '<tr><td colspan="9" class="text-center text-danger">Error loading history</td></tr>';
+    }
+}
+
+// Delete single history entry from inline edit modal
+async function deleteHistoryEntryInline(materialId, historyId) {
+    if (!confirm('Delete this history entry?')) return;
+    
+    try {
+        const response = await fetch(`/api/materials/${materialId}/history/${historyId}`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast(result.message, 'success');
+            await loadMaterialHistory(materialId);
+        } else {
+            showToast(result.message || 'Failed to delete history', 'error');
+        }
+    } catch (error) {
+        console.error('Error deleting history:', error);
+        showToast('Failed to delete history entry', 'error');
+    }
+}
+
+// Delete all history from inline edit modal
+async function deleteAllHistoryInline() {
+    const materialId = document.getElementById('material-id').value;
+    
+    if (!confirm('Delete ALL history entries for this material?')) return;
+    
+    try {
+        const response = await fetch(`/api/materials/${materialId}/history`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast(result.message, 'success');
+            await loadMaterialHistory(materialId);
+        } else {
+            showToast(result.message || 'Failed to delete history', 'error');
+        }
+    } catch (error) {
+        console.error('Error deleting history:', error);
+        showToast('Failed to delete history', 'error');
     }
 }
 
 // Open history modal to view action history from table
 async function openHistoryModal(id, itemName) {
     document.getElementById('history-modal-item-name').textContent = `Item: ${itemName}`;
+    document.getElementById('history-modal-material-id').value = id;
     document.getElementById('history-modal-table-body').innerHTML = 
-        '<tr><td colspan="7" class="text-center text-muted">Loading...</td></tr>';
+        '<tr><td colspan="9" class="text-center text-muted">Loading...</td></tr>';
     
     const historyModal = new bootstrap.Modal(document.getElementById('historyModal'));
     historyModal.show();
     
+    await loadHistoryModalData(id);
+}
+
+// Load history data for modal
+async function loadHistoryModalData(id) {
     try {
         const response = await fetch(`/api/materials/${id}/history`);
         if (!response.ok) throw new Error('Failed to fetch history');
@@ -450,24 +511,80 @@ async function openHistoryModal(id, itemName) {
         const tbody = document.getElementById('history-modal-table-body');
         
         if (history.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No actions recorded yet</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No actions recorded yet</td></tr>';
+            document.getElementById('delete-all-history-btn').style.display = 'none';
         } else {
+            document.getElementById('delete-all-history-btn').style.display = 'inline-block';
             tbody.innerHTML = history.map(h => `
                 <tr>
                     <td><span class="badge bg-secondary">${h.action_number}</span></td>
                     <td>${formatDate(h.date)}</td>
                     <td>${escapeHtml(h.item_name) || '-'}</td>
                     <td>${escapeHtml(h.party_name) || '-'}</td>
+                    <td>${escapeHtml(h.description) || '-'}</td>
                     <td class="text-center text-success">${h.action_inward > 0 ? '+' + h.action_inward : '-'}</td>
                     <td class="text-center text-danger">${h.action_outward > 0 ? '-' + h.action_outward : '-'}</td>
                     <td class="text-center fw-bold">${h.running_balance}</td>
+                    <td class="text-center">
+                        <button class="btn btn-outline-danger btn-sm" onclick="deleteHistoryEntry(${id}, ${h.id})" title="Delete">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
                 </tr>
             `).join('');
         }
     } catch (error) {
         console.error('Error loading history:', error);
         document.getElementById('history-modal-table-body').innerHTML = 
-            '<tr><td colspan="7" class="text-center text-danger">Error loading history</td></tr>';
+            '<tr><td colspan="9" class="text-center text-danger">Error loading history</td></tr>';
+    }
+}
+
+// Delete single history entry
+async function deleteHistoryEntry(materialId, historyId) {
+    if (!confirm('Are you sure you want to delete this history entry?')) return;
+    
+    try {
+        const response = await fetch(`/api/materials/${materialId}/history/${historyId}`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast(result.message, 'success');
+            await loadHistoryModalData(materialId);
+        } else {
+            showToast(result.message || 'Failed to delete history', 'error');
+        }
+    } catch (error) {
+        console.error('Error deleting history:', error);
+        showToast('Failed to delete history entry', 'error');
+    }
+}
+
+// Delete all history for a material
+async function deleteAllHistory() {
+    const materialId = document.getElementById('history-modal-material-id').value;
+    
+    if (!confirm('Are you sure you want to delete ALL history entries for this material? This cannot be undone.')) return;
+    
+    try {
+        const response = await fetch(`/api/materials/${materialId}/history`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast(result.message, 'success');
+            await loadHistoryModalData(materialId);
+        } else {
+            showToast(result.message || 'Failed to delete history', 'error');
+        }
+    } catch (error) {
+        console.error('Error deleting history:', error);
+        showToast('Failed to delete history', 'error');
     }
 }
 
@@ -501,7 +618,8 @@ async function handleFormSubmit(event) {
             party_name: document.getElementById('material-party-name').value.trim(),
             action_inward: parseInt(document.getElementById('action-inward').value) || 0,
             action_outward: parseInt(document.getElementById('action-outward').value) || 0,
-            storage_place: document.getElementById('material-storage-place').value.trim()
+            storage_place: document.getElementById('material-storage-place').value.trim(),
+            description: document.getElementById('material-description').value.trim()
         };
         // Inward and outward are optional - user can edit just to change party name, item name, etc.
     } else {
@@ -512,7 +630,8 @@ async function handleFormSubmit(event) {
             party_name: document.getElementById('material-party-name').value.trim(),
             inward: parseInt(document.getElementById('material-inward').value) || 0,
             outward: parseInt(document.getElementById('material-outward').value) || 0,
-            storage_place: document.getElementById('material-storage-place').value.trim()
+            storage_place: document.getElementById('material-storage-place').value.trim(),
+            description: document.getElementById('material-description').value.trim()
         };
     }
     
@@ -632,6 +751,12 @@ async function handleSearch() {
     } finally {
         hideLoading();
     }
+}
+
+// Clear search and reset table
+function clearSearch() {
+    searchInput.value = '';
+    loadMaterials();
 }
 
 // Refresh data

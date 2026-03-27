@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backup & Restore - Admin</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .stats-card {
+            border-left: 4px solid;
+            transition: transform 0.2s;
+        }
+        .stats-card:hover {
+            transform: translateY(-2px);
+        }
+        .stats-card.users { border-left-color: #0d6efd; }
+        .stats-card.materials { border-left-color: #198754; }
+        .stats-card.deleted { border-left-color: #dc3545; }
+        .stats-card.history { border-left-color: #ffc107; }
+        .deleted-item {
+            background-color: #fff5f5;
+        }
+        .restore-btn {
+            background-color: #198754;
+            color: white;
+        }
+        .restore-btn:hover {
+            background-color: #157347;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <i class="bi bi-box-seam"></i> Material Stock Manager
+            </a>
+            <div class="d-flex align-items-center">
+                <a href="{{ url_for('index') }}" class="btn btn-outline-light btn-sm me-3">
+                    <i class="bi bi-arrow-left me-1"></i> Back to Dashboard
+                </a>
+                <div class="dropdown">
+                    <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-person-circle me-1"></i> {{ session.get('username', 'Admin') }}
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                        <li>
+                            <a class="dropdown-item" href="{{ url_for('admin_users') }}">
+                                <i class="bi bi-people me-2"></i> Users
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item active" href="{{ url_for('admin_backup') }}">
+                                <i class="bi bi-shield-check me-2"></i> Backup & Restore
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{{ url_for('profile') }}">
+                                <i class="bi bi-person me-2"></i> Profile
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item" href="{{ url_for('logout') }}">
+                                <i class="bi bi-box-arrow-right me-2"></i> Logout
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Page Header -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3><i class="bi bi-shield-check me-2"></i>Backup & Restore</h3>
+        </div>
+
+        <!-- Statistics Cards -->
+        <div class="row mb-4">
+            <div class="col-md-3 mb-3">
+                <div class="card stats-card users shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="text-muted mb-1">Active Users</h6>
+                                <h3 class="mb-0">{{ stats.total_users }}</h3>
+                            </div>
+                            <div class="fs-1 text-primary opacity-50">
+                                <i class="bi bi-people"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card stats-card materials shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="text-muted mb-1">Active Materials</h6>
+                                <h3 class="mb-0">{{ stats.total_materials }}</h3>
+                            </div>
+                            <div class="fs-1 text-success opacity-50">
+                                <i class="bi bi-box-seam"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card stats-card deleted shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="text-muted mb-1">Deleted Items</h6>
+                                <h3 class="mb-0">{{ stats.deleted_users + stats.deleted_materials }}</h3>
+                            </div>
+                            <div class="fs-1 text-danger opacity-50">
+                                <i class="bi bi-trash"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card stats-card history shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="text-muted mb-1">Total History</h6>
+                                <h3 class="mb-0">{{ stats.total_history }}</h3>
+                            </div>
+                            <div class="fs-1 text-warning opacity-50">
+                                <i class="bi bi-clock-history"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Backup Downloads -->
+        <div class="card shadow mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-download me-2"></i>Download Backup</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <div class="card h-100 border-primary">
+                            <div class="card-body text-center">
+                                <i class="bi bi-database fs-1 text-primary mb-3"></i>
+                                <h5>Database Backup</h5>
+                                <p class="text-muted small">Download the complete SQLite database file. Best for full restoration.</p>
+                                <a href="{{ url_for('download_backup') }}" class="btn btn-primary">
+                                    <i class="bi bi-download me-1"></i> Download .db File
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="card h-100 border-success">
+                            <div class="card-body text-center">
+                                <i class="bi bi-filetype-json fs-1 text-success mb-3"></i>
+                                <h5>JSON Export</h5>
+                                <p class="text-muted small">Export all data as JSON. Readable format, good for analysis.</p>
+                                <a href="{{ url_for('export_json') }}" class="btn btn-success">
+                                    <i class="bi bi-download me-1"></i> Download .json File
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Import from Backup -->
+        <div class="card shadow mb-4">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="bi bi-upload me-2"></i>Import from Backup</h5>
+            </div>
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <p class="mb-2"><strong>Restore data from a JSON backup file</strong></p>
+                        <p class="text-muted small mb-0">
+                            Upload a previously exported JSON backup file to preview and selectively import materials.
+                            You can choose which items to restore.
+                        </p>
+                    </div>
+                    <div class="col-md-4">
+                        <form action="{{ url_for('import_json_preview') }}" method="POST" enctype="multipart/form-data">
+                            <div class="input-group">
+                                <input type="file" class="form-control" name="backup_file" accept=".json" required>
+                                <button type="submit" class="btn btn-info">
+                                    <i class="bi bi-upload me-1"></i> Upload & Preview
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Deleted Materials -->
+        <div class="card shadow mb-4">
+            <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-box-seam me-2"></i>Deleted Materials</h5>
+                <span class="badge bg-light text-danger">{{ deleted_materials|length }} items</span>
+            </div>
+            <div class="card-body">
+                {% if deleted_materials %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Item Name</th>
+                                <th>Category</th>
+                                <th>Balance</th>
+                                <th>Created By</th>
+                                <th>Deleted At</th>
+                                <th>Deleted By</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for material in deleted_materials %}
+                            <tr class="deleted-item">
+                                <td>{{ loop.index }}</td>
+                                <td><strong>{{ material.item_name }}</strong></td>
+                                <td>{{ material.category or 'N/A' }}</td>
+                                <td>
+                                    <span class="badge bg-info">{{ material.balance }}</span>
+                                </td>
+                                <td>{{ material.user.username if material.user else 'Unknown' }}</td>
+                                <td>{{ material.deleted_at.strftime('%Y-%m-%d %H:%M') if material.deleted_at else '-' }}</td>
+                                <td>{{ material.deleter.username if material.deleter else 'Unknown' }}</td>
+                                <td>
+                                    <form action="{{ url_for('admin_restore_material', material_id=material.id) }}" method="POST" class="d-inline">
+                                        <button type="submit" class="btn btn-sm restore-btn" title="Restore">
+                                            <i class="bi bi-arrow-counterclockwise"></i> Restore
+                                        </button>
+                                    </form>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" 
+                                            onclick="confirmPermanentDelete('{{ material.item_name }}', {{ material.id }})" title="Delete Permanently">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4 text-muted">
+                    <i class="bi bi-check-circle fs-1"></i>
+                    <p class="mt-2">No deleted materials. All items are active.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Deleted Users -->
+        <div class="card shadow mb-4">
+            <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-people me-2"></i>Deleted Users</h5>
+                <span class="badge bg-dark">{{ deleted_users|length }} users</span>
+            </div>
+            <div class="card-body">
+                {% if deleted_users %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Username</th>
+                                <th>Email</th>
+                                <th>Role</th>
+                                <th>Deleted At</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in deleted_users %}
+                            <tr class="deleted-item">
+                                <td>{{ loop.index }}</td>
+                                <td><strong>{{ user.username }}</strong></td>
+                                <td>{{ user.email }}</td>
+                                <td>
+                                    <span class="badge bg-{{ 'danger' if user.role == 'admin' else 'primary' if user.role == 'manager' else 'secondary' }}">
+                                        {{ user.role.title() }}
+                                    </span>
+                                </td>
+                                <td>{{ user.deleted_at.strftime('%Y-%m-%d %H:%M') if user.deleted_at else '-' }}</td>
+                                <td>
+                                    <form action="{{ url_for('admin_recover_user', user_id=user.id) }}" method="POST" class="d-inline">
+                                        <button type="submit" class="btn btn-sm restore-btn" title="Restore">
+                                            <i class="bi bi-arrow-counterclockwise"></i> Restore
+                                        </button>
+                                    </form>
+                                    <form action="{{ url_for('admin_permanent_delete_user', user_id=user.id) }}" method="POST" class="d-inline"
+                                          onsubmit="return confirm('PERMANENTLY delete user {{ user.username }}? This cannot be undone!')">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete Permanently">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4 text-muted">
+                    <i class="bi bi-check-circle fs-1"></i>
+                    <p class="mt-2">No deleted users. All accounts are active.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Permanent Delete Confirmation Modal -->
+    <div class="modal fade" id="permanentDeleteModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2"></i>Permanent Delete</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2">Are you sure you want to <strong>permanently delete</strong> this material?</p>
+                    <p class="text-danger"><strong id="deleteItemName"></strong></p>
+                    <p class="text-muted small mb-0">This action cannot be undone. All associated history will also be deleted.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <form id="permanentDeleteForm" method="POST" class="d-inline">
+                        <button type="submit" class="btn btn-danger">
+                            <i class="bi bi-trash me-1"></i> Delete Permanently
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function confirmPermanentDelete(itemName, materialId) {
+            document.getElementById('deleteItemName').textContent = itemName;
+            document.getElementById('permanentDeleteForm').action = `/admin/materials/${materialId}/permanent-delete`;
+            new bootstrap.Modal(document.getElementById('permanentDeleteModal')).show();
+        }
+    </script>
+</body>
+</html>
