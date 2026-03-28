@@ -66,11 +66,6 @@
 
                             <div class="row">
                                 <div class="col-md-6 mb-3">
-                                    <label class="form-label">Phone</label>
-                                    <input type="tel" class="form-control" name="phone" 
-                                           value="{{ user.phone or '' }}" placeholder="Optional">
-                                </div>
-                                <div class="col-md-6 mb-3">
                                     <label class="form-label">Role</label>
                                     <select class="form-select" name="role">
                                         <option value="operator" {{ 'selected' if user.role == 'operator' }}>Operator</option>

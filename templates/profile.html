@@ -281,15 +281,6 @@
                 </div>
                 <div class="info-item">
                     <div class="info-icon">
-                        <i class="bi bi-phone"></i>
-                    </div>
-                    <div class="info-content">
-                        <div class="info-label">Phone Number</div>
-                        <div class="info-value">{{ user.phone or 'Not provided' }}</div>
-                    </div>
-                </div>
-                <div class="info-item">
-                    <div class="info-icon">
                         <i class="bi bi-calendar"></i>
                     </div>
                     <div class="info-content">
@@ -322,17 +313,6 @@
                                 <input type="email" class="form-control" id="email" name="email" 
                                        value="{{ user.email or '' }}" required>
                                 <label for="email">Email Address <span class="text-danger">*</span></label>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="form-floating position-relative">
-                                <i class="bi bi-phone input-icon"></i>
-                                <input type="tel" class="form-control" id="phone" name="phone" 
-                                       value="{{ user.phone or '' }}">
-                                <label for="phone">Phone Number <span class="text-muted">(Optional)</span></label>
                             </div>
                         </div>
                     </div>

@@ -281,7 +281,7 @@ function renderMaterialsTable(data) {
                         <i class="bi bi-geo-alt me-1"></i>${escapeHtml(material.storage_place)}
                     </span>
                 </td>
-                <td class="text-center pe-4">
+                <td class="text-center pe-4 no-print">
                     <button class="btn btn-action btn-view me-1" onclick="openHistoryModal(${material.id}, '${escapeHtml(material.item_name)}')" 
                             title="View History">
                         <i class="bi bi-eye"></i>
@@ -380,7 +380,7 @@ async function openEditModal(id) {
         document.getElementById('materialModalLabel').innerHTML = 
             '<i class="bi bi-pencil-square me-2"></i> Update Material: ' + escapeHtml(material.item_name);
         document.getElementById('save-btn').innerHTML = 
-            '<i class="bi bi-check-circle me-1"></i> Add Action';
+            '<i class="bi bi-check-circle me-1"></i> Save';
         
         materialModalInstance.show();
     } catch (error) {
@@ -797,97 +797,46 @@ function exportToCSV() {
     showToast('Export completed', 'success');
 }
 
-// Export to Excel (HTML Table format - universally compatible)
+// Export to Excel (XLSX format using SheetJS)
 function exportToExcel() {
     if (materials.length === 0) {
         showToast('No data to export', 'error');
         return;
     }
     
-    // Create HTML table that Excel can open
-    let htmlContent = `
-<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-<head>
-    <meta charset="UTF-8">
-    <!--[if gte mso 9]>
-    <xml>
-        <x:ExcelWorkbook>
-            <x:ExcelWorksheets>
-                <x:ExcelWorksheet>
-                    <x:Name>Material Stock</x:Name>
-                    <x:WorksheetOptions>
-                        <x:DisplayGridlines/>
-                    </x:WorksheetOptions>
-                </x:ExcelWorksheet>
-            </x:ExcelWorksheets>
-        </x:ExcelWorkbook>
-    </xml>
-    <![endif]-->
-    <style>
-        table { border-collapse: collapse; width: 100%; }
-        th { 
-            background-color: #4472C4; 
-            color: white; 
-            font-weight: bold; 
-            padding: 10px; 
-            border: 1px solid #000;
-            text-align: center;
-        }
-        td { 
-            padding: 8px; 
-            border: 1px solid #ccc; 
-        }
-        .number { text-align: center; }
-        .positive { color: #198754; font-weight: bold; text-align: center; }
-        .negative { color: #DC3545; font-weight: bold; text-align: center; }
-    </style>
-</head>
-<body>
-    <table>
-        <thead>
-            <tr>
-                <th>Sr. No.</th>
-                <th>Date</th>
-                <th>Item Name</th>
-                <th>Party Name</th>
-                <th>Inward</th>
-                <th>Outward</th>
-                <th>Balance</th>
-                <th>Storage Place</th>
-            </tr>
-        </thead>
-        <tbody>`;
+    // Prepare data for Excel
+    const excelData = materials.map((m, index) => ({
+        'Sr. No.': index + 1,
+        'Date': m.date || '',
+        'Item Name': m.item_name || '',
+        'Party Name': m.party_name || '',
+        'Inward': m.inward || 0,
+        'Outward': m.outward || 0,
+        'Balance': m.balance || 0,
+        'Storage Place': m.storage_place || ''
+    }));
     
-    // Add data rows
-    materials.forEach((m, index) => {
-        const balanceClass = m.balance >= 0 ? 'positive' : 'negative';
-        htmlContent += `
-            <tr>
-                <td class="number">${index + 1}</td>
-                <td>${escapeHtmlForExcel(m.date)}</td>
-                <td>${escapeHtmlForExcel(m.item_name)}</td>
-                <td>${escapeHtmlForExcel(m.party_name)}</td>
-                <td class="number">${m.inward}</td>
-                <td class="number">${m.outward}</td>
-                <td class="${balanceClass}">${m.balance}</td>
-                <td>${escapeHtmlForExcel(m.storage_place)}</td>
-            </tr>`;
-    });
+    // Create worksheet
+    const ws = XLSX.utils.json_to_sheet(excelData);
     
-    htmlContent += `
-        </tbody>
-    </table>
-</body>
-</html>`;
+    // Set column widths
+    ws['!cols'] = [
+        { wch: 8 },   // Sr. No.
+        { wch: 12 },  // Date
+        { wch: 25 },  // Item Name
+        { wch: 20 },  // Party Name
+        { wch: 10 },  // Inward
+        { wch: 10 },  // Outward
+        { wch: 10 },  // Balance
+        { wch: 20 }   // Storage Place
+    ];
     
-    // Download the file
-    const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel;charset=utf-8' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `material_stock_${new Date().toISOString().split('T')[0]}.xls`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Material Stock');
+    
+    // Download file
+    XLSX.writeFile(wb, `material_stock_${new Date().toISOString().split('T')[0]}.xlsx`);
     
     showToast('Excel file downloaded successfully!', 'success');
 }
@@ -909,13 +858,19 @@ function printTable() {
         return;
     }
     
-    // Create print content
+    // Create print content with formatted title
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, '0');
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const yy = String(now.getFullYear()).slice(-2);
+    const printTitle = `material_list_${dd}_${mm}_${yy}`;
+    
     let printContent = `
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Material Stock Report - ${new Date().toLocaleDateString()}</title>
+    <title>${printTitle}</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -985,16 +940,20 @@ function printTable() {
         .negative { color: #DC3545; font-weight: bold; text-align: center; }
         .zero { color: #666; text-align: center; }
         .footer {
-            margin-top: 30px;
-            padding-top: 15px;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 10px 20px;
             border-top: 1px solid #ddd;
             font-size: 10px;
             color: #666;
             display: flex;
             justify-content: space-between;
+            background: white;
         }
         @media print {
-            body { padding: 10px; }
+            body { padding: 10px; padding-bottom: 50px; }
             .no-print { display: none; }
         }
     </style>
@@ -1061,7 +1020,7 @@ function printTable() {
     
     <div class="footer">
         <span>Material Stock Management System</span>
-        <span>Developed by Amogh Deshmukh</span>
+        <span>&copy; Developed by Amogh Deshmukh</span>
     </div>
 </body>
 </html>`;
@@ -1229,13 +1188,19 @@ function printFilteredTable(data, filterInfo) {
         return;
     }
     
-    // Create print content
+    // Create print content with formatted title
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, '0');
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const yy = String(now.getFullYear()).slice(-2);
+    const printTitle = `material_list_${dd}_${mm}_${yy}`;
+    
     let printContent = `
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Material Stock Report - ${new Date().toLocaleDateString()}</title>
+    <title>${printTitle}</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -1314,16 +1279,20 @@ function printFilteredTable(data, filterInfo) {
         .negative { color: #DC3545; font-weight: bold; text-align: center; }
         .zero { color: #666; text-align: center; }
         .footer {
-            margin-top: 30px;
-            padding-top: 15px;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 10px 20px;
             border-top: 1px solid #ddd;
             font-size: 10px;
             color: #666;
             display: flex;
             justify-content: space-between;
+            background: white;
         }
         @media print {
-            body { padding: 10px; }
+            body { padding: 10px; padding-bottom: 50px; }
             .no-print { display: none; }
         }
     </style>
@@ -1394,7 +1363,7 @@ function printFilteredTable(data, filterInfo) {
     
     <div class="footer">
         <span>Material Stock Management System</span>
-        <span>Developed by Amogh Deshmukh</span>
+        <span>&copy; Developed by Amogh Deshmukh</span>
     </div>
 </body>
 </html>`;

@@ -74,7 +74,7 @@ def send_reset_email(user_email, reset_url):
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)  # Email is now required
+    email = db.Column(db.String(120), unique=True, nullable=False)  # Email required for password recovery
     phone = db.Column(db.String(20), unique=True, nullable=True)  # Phone is optional
     password_hash = db.Column(db.String(256), nullable=False)
     role = db.Column(db.String(20), default='operator')  # 'admin', 'manager', 'operator'
@@ -109,7 +109,6 @@ class User(db.Model):
             'id': self.id,
             'username': self.username,
             'email': self.email,
-            'phone': self.phone,
             'role': self.role,
             'is_active': self.is_active
         }
@@ -267,11 +266,10 @@ def login():
         username_or_email = data.get('username', '').strip()
         password = data.get('password', '')
         
-        # Find user by username, email, or phone (exclude deleted users)
+        # Find user by username or email (exclude deleted users)
         user = User.query.filter(
             (User.username == username_or_email) |
-            (User.email == username_or_email) |
-            (User.phone == username_or_email)
+            (User.email == username_or_email)
         ).filter(User.deleted_at == None).first()
         
         if user and user.check_password(password) and user.is_active:
@@ -358,7 +356,6 @@ def register():
         data = request.form
         username = data.get('username', '').strip()
         email = data.get('email', '').strip()
-        phone = data.get('phone', '').strip() or None
         password = data.get('password', '')
         confirm_password = data.get('confirm_password', '')
         
@@ -385,10 +382,6 @@ def register():
         if email and User.query.filter_by(email=email).first():
             errors.append('Email already registered')
         
-        # Check if phone exists
-        if phone and User.query.filter_by(phone=phone).first():
-            errors.append('Phone number already registered')
-        
         if errors:
             for error in errors:
                 flash(error, 'error')
@@ -396,7 +389,7 @@ def register():
             try:
                 # Make 'amogh' username an admin by default
                 role = 'admin' if username.lower() == 'amogh' else 'operator'
-                user = User(username=username, email=email, phone=phone, role=role)
+                user = User(username=username, email=email, role=role)
                 user.set_password(password)
                 db.session.add(user)
                 db.session.commit()
@@ -432,7 +425,6 @@ def update_profile():
     # Get form data
     new_username = data.get('username', '').strip()
     new_email = data.get('email', '').strip() or None
-    new_phone = data.get('phone', '').strip() or None
     current_password = data.get('current_password', '')
     new_password = data.get('new_password', '')
     confirm_password = data.get('confirm_password', '')
@@ -455,15 +447,6 @@ def update_profile():
             user.email = new_email
     elif not new_email:
         errors.append('Email address is required')
-    
-    # Validate phone (optional)
-    if new_phone and new_phone != user.phone:
-        if User.query.filter(User.phone == new_phone, User.id != user.id).first():
-            errors.append('Phone number already registered')
-        else:
-            user.phone = new_phone
-    elif not new_phone:
-        user.phone = None
     
     # Password change (optional)
     if new_password:
@@ -532,7 +515,6 @@ def admin_edit_user(user_id):
         
         new_username = data.get('username', '').strip()
         new_email = data.get('email', '').strip()
-        new_phone = data.get('phone', '').strip() or None
         new_role = data.get('role', 'operator')
         new_password = data.get('new_password', '')
         is_active = data.get('is_active') == 'on'
@@ -554,15 +536,6 @@ def admin_edit_user(user_id):
                 user.email = new_email
         elif not new_email:
             errors.append('Email is required')
-        
-        # Validate phone
-        if new_phone and new_phone != user.phone:
-            if User.query.filter(User.phone == new_phone, User.id != user.id).first():
-                errors.append('Phone number already registered')
-            else:
-                user.phone = new_phone
-        elif not new_phone:
-            user.phone = None
         
         # Update role
         if new_role in ['admin', 'manager', 'operator']:
@@ -786,7 +759,6 @@ def export_json():
             'id': u.id,
             'username': u.username,
             'email': u.email,
-            'phone': u.phone,
             'role': u.role,
             'is_active': u.is_active,
             'deleted_at': u.deleted_at.strftime('%Y-%m-%d %H:%M:%S') if u.deleted_at else None

@@ -38,10 +38,27 @@
         .print-header {
             display: none;
         }
+        .print-footer {
+            display: none;
+        }
         @media print {
             .no-print { display: none !important; }
             .print-header { display: block !important; }
+            .print-footer {
+                display: flex !important;
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                padding: 10px 20px;
+                border-top: 1px solid #ddd;
+                font-size: 10px;
+                color: #666;
+                justify-content: space-between;
+                background: white;
+            }
             .card { border: none !important; box-shadow: none !important; }
+            body { padding-bottom: 50px; }
         }
         .sortable {
             cursor: pointer;
@@ -462,6 +479,8 @@
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- SheetJS for Excel export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
     <script>
         let materials = [];
@@ -1000,92 +1019,70 @@
             }
         }
         
-        // Export to Excel
+        // Export to Excel (XLSX format)
         function exportToExcel() {
             if (materials.length === 0) {
                 showToast('Error', 'No data to export', 'error');
                 return;
             }
             
-            let htmlContent = `
-<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-<head>
-    <meta charset="UTF-8">
-    <!--[if gte mso 9]>
-    <xml>
-        <x:ExcelWorkbook>
-            <x:ExcelWorksheets>
-                <x:ExcelWorksheet>
-                    <x:Name>Material Stock</x:Name>
-                    <x:WorksheetOptions>
-                        <x:DisplayGridlines/>
-                    </x:WorksheetOptions>
-                </x:ExcelWorksheet>
-            </x:ExcelWorksheets>
-        </x:ExcelWorkbook>
-    </xml>
-    <![endif]-->
-    <style>
-        table { border-collapse: collapse; width: 100%; }
-        th { background-color: #4472C4; color: white; font-weight: bold; padding: 10px; border: 1px solid #000; text-align: center; }
-        td { padding: 8px; border: 1px solid #ccc; }
-        .number { text-align: center; }
-        .positive { color: #198754; font-weight: bold; text-align: center; }
-        .negative { color: #DC3545; font-weight: bold; text-align: center; }
-    </style>
-</head>
-<body>
-    <table>
-        <thead>
-            <tr>
-                <th>Sr. No.</th>
-                <th>Date</th>
-                <th>Item Name</th>
-                <th>Description</th>
-                <th>Inward</th>
-                <th>Outward</th>
-                <th>Balance</th>
-                <th>Category</th>
-            </tr>
-        </thead>
-        <tbody>`;
+            // Prepare data for Excel
+            const excelData = materials.map((m, index) => ({
+                'Sr. No.': index + 1,
+                'Date': m.date || '',
+                'Item Name': m.item_name || '',
+                'Description': m.description || '',
+                'Inward': m.inward || 0,
+                'Outward': m.outward || 0,
+                'Balance': m.balance || 0,
+                'Category': m.category || 'Category A'
+            }));
             
-            materials.forEach((m, index) => {
-                const balance = m.balance || 0;
-                const balanceClass = balance > 0 ? 'positive' : (balance < 0 ? 'negative' : 'number');
-                
-                htmlContent += `
-            <tr>
-                <td class="number">${index + 1}</td>
-                <td>${m.date || ''}</td>
-                <td>${m.item_name || ''}</td>
-                <td>${m.description || ''}</td>
-                <td class="number">${m.inward || 0}</td>
-                <td class="number">${m.outward || 0}</td>
-                <td class="${balanceClass}">${balance}</td>
-                <td>${m.category || 'Category A'}</td>
-            </tr>`;
-            });
+            // Create worksheet
+            const ws = XLSX.utils.json_to_sheet(excelData);
             
-            htmlContent += `
-        </tbody>
-    </table>
-</body>
-</html>`;
+            // Set column widths
+            ws['!cols'] = [
+                { wch: 8 },   // Sr. No.
+                { wch: 12 },  // Date
+                { wch: 25 },  // Item Name
+                { wch: 30 },  // Description
+                { wch: 10 },  // Inward
+                { wch: 10 },  // Outward
+                { wch: 10 },  // Balance
+                { wch: 15 }   // Category
+            ];
             
-            const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `Material_Stock_${new Date().toISOString().split('T')[0]}.xls`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
+            // Create workbook
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Material Stock');
+            
+            // Download file
+            XLSX.writeFile(wb, `Material_Stock_${new Date().toISOString().split('T')[0]}.xlsx`);
             
             showToast('Success', 'Excel file downloaded successfully', 'success');
         }
         
     </script>
+    <script>
+        // Set PDF filename when printing
+        const originalTitle = document.title;
+        window.addEventListener('beforeprint', function() {
+            const now = new Date();
+            const dd = String(now.getDate()).padStart(2, '0');
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const yy = String(now.getFullYear()).slice(-2);
+            document.title = `material_list_${dd}_${mm}_${yy}`;
+        });
+        window.addEventListener('afterprint', function() {
+            document.title = originalTitle;
+        });
+    </script>
+    
+    <!-- Print Footer (only visible when printing) -->
+    <div class="print-footer">
+        <span>Material Stock Management System</span>
+        <span>&copy; Developed by Amogh Deshmukh</span>
+    </div>
 </body>
 </html>

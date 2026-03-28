@@ -84,7 +84,6 @@
                                 <th>#</th>
                                 <th>Username</th>
                                 <th>Email</th>
-                                <th>Phone</th>
                                 <th>Role</th>
                                 <th>Status</th>
                                 <th>Created</th>
@@ -102,7 +101,6 @@
                                     {% endif %}
                                 </td>
                                 <td>{{ user.email }}</td>
-                                <td>{{ user.phone or '-' }}</td>
                                 <td>
                                     <span class="badge badge-{{ user.role }}">
                                         {{ user.role|capitalize }}

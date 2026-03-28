@@ -199,7 +199,7 @@
                     <i class="bi bi-person-plus"></i>
                 </div>
                 <h2>Create Account</h2>
-                <p>Join Material Stock Manager</p>
+                <p>Join to Your personalized Stock Management</p>
             </div>
             
             <div class="register-body">
@@ -217,7 +217,7 @@
                 {% endwith %}
                 
                 <p class="required-note">
-                    <span class="text-danger">*</span> Required fields. Email is mandatory for password recovery.
+                    <span class="text-danger">*</span> Required fields. Email is required for password recovery.
                 </p>
                 
                 <form method="POST" action="{{ url_for('register') }}" id="register-form">
@@ -233,13 +233,6 @@
                         <input type="email" class="form-control" id="email" name="email" 
                                placeholder="Email Address" required>
                         <label for="email">Email Address <span class="text-danger">*</span></label>
-                    </div>
-                    
-                    <div class="form-floating position-relative">
-                        <i class="bi bi-phone input-icon"></i>
-                        <input type="tel" class="form-control" id="phone" name="phone" 
-                               placeholder="Phone Number">
-                        <label for="phone">Phone Number <span class="text-muted">(Optional)</span></label>
                     </div>
                     
                     <div class="form-floating position-relative">
@@ -284,7 +277,7 @@
         </div>
         
         <p class="text-center text-white mt-4 opacity-75">
-            <small>&copy; 2026 Material Stock Management System</small>
+            <small>&copy; 2026 Developed by Amogh Deshmukh</small>
         </p>
     </div>
 
@@ -352,7 +345,7 @@
             }
         }
         
-        // Form validation - email is now required via HTML5 required attribute
+        // Form validation - email is required for password recovery
         document.getElementById('register-form').addEventListener('submit', function(e) {
             const email = document.getElementById('email').value.trim();
             
