@@ -1061,7 +1061,7 @@ function printTable() {
     
     <div class="footer">
         <span>Material Stock Management System</span>
-        <span>Page 1</span>
+        <span>Developed by Amogh Deshmukh</span>
     </div>
 </body>
 </html>`;
@@ -1394,7 +1394,7 @@ function printFilteredTable(data, filterInfo) {
     
     <div class="footer">
         <span>Material Stock Management System</span>
-        <span>Page 1</span>
+        <span>Developed by Amogh Deshmukh</span>
     </div>
 </body>
 </html>`;
