@@ -42,7 +42,7 @@ Stock_app/
 ## Database Models
 
 ### User
-- `id`, `username`, `email`, `phone`, `password_hash`
+- `id`, `username`, `email`, `password_hash`
 - `role` (admin/manager/operator)
 - `is_active`, `deleted_at` (soft delete)
 - `reset_token`, `reset_token_expiry` (password reset)
@@ -58,6 +58,7 @@ Stock_app/
 ### MaterialHistory
 - Tracks individual inward/outward transactions
 - `action_number`, `action_inward`, `action_outward`, `running_balance`
+- Also tracks `item_name`, `party_name`, `description`, `storage_place` at time of action
 - Maintains full audit trail per material
 
 ## API Endpoints
@@ -109,6 +110,8 @@ Stock_app/
 - Fetch API for HTTP requests
 - Debounced search input
 - Client-side table sorting and rendering
+- SheetJS library for Excel (.xlsx) export
+- Print functions with fixed footer on every page
 
 ### CSS (static/css/style.css)
 - Custom styles extending Bootstrap 5
@@ -138,7 +141,8 @@ Configure via `.env` file or environment:
 SECRET_KEY=<flask-secret-key>
 DATABASE_URL=sqlite:///material_stock.db
 MAIL_SERVER=smtp.gmail.com
-MAIL_PORT=587
+MAIL_PORT=465
+MAIL_USE_SSL=True
 MAIL_USERNAME=<email>
 MAIL_PASSWORD=<app-password>
 MAIL_DEFAULT_SENDER=<sender-email>
@@ -173,6 +177,15 @@ MAIL_DEFAULT_SENDER=<sender-email>
 10. **Navigation Pattern**: Admin dropdown menus include links to Users, Backup & Restore, Profile, and Logout.
 
 11. **Testing**: No automated tests exist. Manual testing required after changes.
+
+12. **Print Functionality**: Both pages use `window.print()` with:
+    - Fixed footer "© Developed by Amogh Deshmukh" on every page
+    - PDF filename format: `material_list_DD_MM_YY.pdf`
+    - `.no-print` class hides nav, search, action buttons when printing
+
+13. **Excel Export**: Uses SheetJS library (`xlsx.full.min.js`) for proper `.xlsx` format export.
+
+14. **Cache Busting**: CSS and JS files use `?v=N` query parameter to bust browser cache after updates.
 
 ## Common Tasks
 
