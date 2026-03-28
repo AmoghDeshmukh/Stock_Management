@@ -964,6 +964,7 @@ def add_material():
         item_name = data['item_name'].strip()
         existing = Material.query.filter(
             Material.user_id == session['user_id'],
+            Material.deleted_at == None,
             db.func.lower(Material.item_name) == item_name.lower()
         ).first()
         
@@ -1038,12 +1039,13 @@ def update_material(id):
     data = request.get_json()
     
     try:
-        # Check for duplicate item name (excluding current material)
+        # Check for duplicate item name (excluding current material and soft-deleted)
         new_item_name = data.get('item_name', '').strip()
         if new_item_name:
             existing = Material.query.filter(
-                Material.user_id == session['user_id'],
+                Material.user_id == material.user_id,
                 Material.id != id,
+                Material.deleted_at == None,
                 db.func.lower(Material.item_name) == new_item_name.lower()
             ).first()
             
@@ -1059,14 +1061,23 @@ def update_material(id):
         new_party_name = data.get('party_name', '')
         new_storage_place = data.get('storage_place', '')
         new_date = datetime.strptime(data['date'], '%Y-%m-%d').date()
+        new_description = data.get('description', '')
         
         # Calculate new cumulative totals
         new_total_inward = material.inward + action_inward
         new_total_outward = material.outward + action_outward
         new_balance = new_total_inward - new_total_outward
         
-        # Only record history if there's an actual quantity change (inward or outward)
-        if action_inward > 0 or action_outward > 0:
+        # Check if any tracked fields changed
+        has_quantity_change = action_inward > 0 or action_outward > 0
+        has_field_change = (
+            new_party_name != (material.party_name or '') or
+            new_storage_place != (material.storage_place or '') or
+            new_description != (material.description or '')
+        )
+        
+        # Record history if there's a quantity change OR any tracked field changed
+        if has_quantity_change or has_field_change:
             # Get the next action number
             last_action = MaterialHistory.query.filter_by(material_id=material.id).order_by(MaterialHistory.action_number.desc()).first()
             next_action_number = (last_action.action_number + 1) if last_action else 2  # First action is the initial creation
@@ -1082,7 +1093,7 @@ def update_material(id):
                 action_outward=action_outward,
                 running_balance=new_balance,
                 storage_place=new_storage_place,
-                description=data.get('description', ''),
+                description=new_description,
                 created_by=session['user_id']
             )
             db.session.add(history)
