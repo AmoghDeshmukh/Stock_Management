@@ -416,6 +416,12 @@
                             <i class="bi bi-trash me-1"></i> Delete All History
                         </button>
                     </div>
+                    <div class="mb-3">
+                        <label for="history-party-filter" class="form-label">Filter by Party Name</label>
+                        <select class="form-select" id="history-party-filter" onchange="filterHistoryByParty()">
+                            <option value="">-- All Parties --</option>
+                        </select>
+                    </div>
                     <input type="hidden" id="history-modal-material-id">
                     <div class="table-responsive">
                         <table class="table table-sm table-hover">

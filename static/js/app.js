@@ -488,12 +488,20 @@ async function deleteAllHistoryInline() {
     }
 }
 
+// Store history data for filtering
+let currentHistoryData = [];
+
 // Open history modal to view action history from table
 async function openHistoryModal(id, itemName) {
     document.getElementById('history-modal-item-name').textContent = `Item: ${itemName}`;
     document.getElementById('history-modal-material-id').value = id;
     document.getElementById('history-modal-table-body').innerHTML = 
         '<tr><td colspan="9" class="text-center text-muted">Loading...</td></tr>';
+    // Reset party filter
+    const partyFilter = document.getElementById('history-party-filter');
+    if (partyFilter) {
+        partyFilter.innerHTML = '<option value="">-- All Parties --</option>';
+    }
     
     const historyModal = new bootstrap.Modal(document.getElementById('historyModal'));
     historyModal.show();
@@ -508,35 +516,74 @@ async function loadHistoryModalData(id) {
         if (!response.ok) throw new Error('Failed to fetch history');
         
         const history = await response.json();
-        const tbody = document.getElementById('history-modal-table-body');
+        currentHistoryData = history; // Store for filtering
         
-        if (history.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No actions recorded yet</td></tr>';
-            document.getElementById('delete-all-history-btn').style.display = 'none';
-        } else {
-            document.getElementById('delete-all-history-btn').style.display = 'inline-block';
-            tbody.innerHTML = history.map(h => `
-                <tr>
-                    <td><span class="badge bg-secondary">${h.action_number}</span></td>
-                    <td>${formatDate(h.date)}</td>
-                    <td>${escapeHtml(h.item_name) || '-'}</td>
-                    <td>${escapeHtml(h.party_name) || '-'}</td>
-                    <td>${escapeHtml(h.description) || '-'}</td>
-                    <td class="text-center text-success">${h.action_inward > 0 ? '+' + h.action_inward : '-'}</td>
-                    <td class="text-center text-danger">${h.action_outward > 0 ? '-' + h.action_outward : '-'}</td>
-                    <td class="text-center fw-bold">${h.running_balance}</td>
-                    <td class="text-center">
-                        <button class="btn btn-outline-danger btn-sm" onclick="deleteHistoryEntry(${id}, ${h.id})" title="Delete">
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </td>
-                </tr>
-            `).join('');
-        }
+        // Populate party filter dropdown
+        populateHistoryPartyFilter(history);
+        
+        renderHistoryTable(history, id);
     } catch (error) {
         console.error('Error loading history:', error);
         document.getElementById('history-modal-table-body').innerHTML = 
             '<tr><td colspan="9" class="text-center text-danger">Error loading history</td></tr>';
+    }
+}
+
+// Populate party filter dropdown with unique party names
+function populateHistoryPartyFilter(history) {
+    const partyFilter = document.getElementById('history-party-filter');
+    if (!partyFilter) return;
+    
+    // Get unique party names
+    const partyNames = [...new Set(history.map(h => h.party_name).filter(name => name && name.trim()))];
+    partyNames.sort();
+    
+    partyFilter.innerHTML = '<option value="">-- All Parties --</option>';
+    partyNames.forEach(name => {
+        partyFilter.innerHTML += `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`;
+    });
+}
+
+// Filter history by party name
+function filterHistoryByParty() {
+    const partyFilter = document.getElementById('history-party-filter');
+    const selectedParty = partyFilter ? partyFilter.value : '';
+    const materialId = document.getElementById('history-modal-material-id').value;
+    
+    let filteredHistory = currentHistoryData;
+    if (selectedParty) {
+        filteredHistory = currentHistoryData.filter(h => h.party_name === selectedParty);
+    }
+    
+    renderHistoryTable(filteredHistory, materialId);
+}
+
+// Render history table
+function renderHistoryTable(history, materialId) {
+    const tbody = document.getElementById('history-modal-table-body');
+    
+    if (history.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No actions recorded yet</td></tr>';
+        document.getElementById('delete-all-history-btn').style.display = 'none';
+    } else {
+        document.getElementById('delete-all-history-btn').style.display = 'inline-block';
+        tbody.innerHTML = history.map(h => `
+            <tr>
+                <td><span class="badge bg-secondary">${h.action_number}</span></td>
+                <td>${formatDate(h.date)}</td>
+                <td>${escapeHtml(h.item_name) || '-'}</td>
+                <td>${escapeHtml(h.party_name) || '-'}</td>
+                <td>${escapeHtml(h.description) || '-'}</td>
+                <td class="text-center text-success">${h.action_inward > 0 ? '+' + h.action_inward : '-'}</td>
+                <td class="text-center text-danger">${h.action_outward > 0 ? '-' + h.action_outward : '-'}</td>
+                <td class="text-center fw-bold">${h.running_balance}</td>
+                <td class="text-center">
+                    <button class="btn btn-outline-danger btn-sm" onclick="deleteHistoryEntry(${materialId}, ${h.id})" title="Delete">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
     }
 }
 
